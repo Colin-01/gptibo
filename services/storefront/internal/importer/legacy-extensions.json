@@ -1,4 +1,9 @@
 {
   "xgift_recovery_attempts": [{"name":"previous_stage","type":"TEXT","pk":0}],
-  "partner_product_order": [{"name":"hidden_product_ids","type":"TEXT","pk":0}]
+  "partner_product_order": [{"name":"hidden_product_ids","type":"TEXT","pk":0}],
+  "visitor_days": [
+    {"name":"product_view","type":"INTEGER","pk":0},
+    {"name":"checkout_view","type":"INTEGER","pk":0},
+    {"name":"payment_view","type":"INTEGER","pk":0}
+  ]
 }

@@ -1,6 +1,8 @@
 import { useId, useState, type ReactNode } from 'react'
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from 'recharts'
-import { ChartNoAxesCombined, Eye, TrendingUp, Users } from 'lucide-react'
+import { Activity, ChartNoAxesCombined, Eye, LogOut, RefreshCw, Users } from 'lucide-react'
+import { visitorDay, visitorPercent, visitorQuery, visitorRange, type VisitorPeriod } from '../../shared/visitor-analytics.ts'
+export type { VisitorPeriod } from '../../shared/visitor-analytics.ts'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import {
@@ -19,9 +21,16 @@ export type VisitorSummary = {
   days: number
   visitors: number
   pageViews: number
+  start: string
+  end: string
+  today: { visitors: number; pageViews: number }
+  effectiveVisitors: number
+  effectiveRate: number
+  bounceRate: number
+  conversionRate: number
+  funnel: { visitors: number; productVisitors: number; checkoutVisitors: number; paymentVisitors: number; paidOrders: number }
   trend: { day: string; visitors: number; pageViews: number }[]
 }
-export type VisitorPeriod = 7 | 30 | 90
 
 const chartConfig = {
   visitors: {
@@ -91,6 +100,7 @@ function TrendChart({ trend }: { trend: VisitorSummary['trend'] }) {
           <ChartLegend content={<ChartLegendContent />} />
           <Area
             dataKey="pageViews"
+            isAnimationActive={false}
             type="monotone"
             stroke="var(--color-pageViews)"
             strokeWidth={2}
@@ -99,6 +109,7 @@ function TrendChart({ trend }: { trend: VisitorSummary['trend'] }) {
           />
           <Area
             dataKey="visitors"
+            isAnimationActive={false}
             type="monotone"
             stroke="var(--color-visitors)"
             strokeWidth={2.5}
@@ -139,6 +150,7 @@ export function VisitorStats({
   className,
   selectedDays,
   onDaysChange,
+  onRefresh,
 }: {
   endpoint: string
   revision?: number
@@ -148,22 +160,25 @@ export function VisitorStats({
   className?: string
   selectedDays?: VisitorPeriod
   onDaysChange?: (days: VisitorPeriod) => void
+  onRefresh?: () => void
 }) {
   const [internalDays, setInternalDays] = useState<VisitorPeriod>(7)
   const days = selectedDays ?? internalDays
   const setDays = onDaysChange ?? setInternalDays
-  const { data, error, loading } = useResource<VisitorSummary>(`${endpoint}?days=${days}`, revision)
+  const [refresh, setRefresh] = useState(0)
+  const [customOpen, setCustomOpen] = useState(typeof days === 'object')
+  const [start, setStart] = useState(typeof days === 'object' ? days.start : visitorDay())
+  const [end, setEnd] = useState(typeof days === 'object' ? days.end : visitorDay())
+  const [rangeError, setRangeError] = useState('')
+  const { data, error, loading } = useResource<VisitorSummary>(`${endpoint}?${visitorQuery(days)}`, revision + refresh)
 
-  const avgDailyVisitors = data
-    ? new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(
-      data.trend.reduce((sum, day) => sum + day.visitors, 0) / data.days
-    )
-    : '0'
   const avgDepth = data && data.visitors > 0 ? (data.pageViews / data.visitors).toFixed(1) : '0.0'
-  const peakDay = data?.trend?.reduce(
-    (max, cur) => (cur.visitors > max.visitors ? cur : max),
-    data.trend[0] ?? { day: '', visitors: 0, pageViews: 0 }
-  )
+  const avgDailyVisitors = data ? (data.trend.reduce((sum, row) => sum + row.visitors, 0) / data.days).toLocaleString('zh-CN', { maximumFractionDigits: 2 }) : '0'
+  const peakDay = data?.trend.reduce((peak, row) => row.visitors > peak.visitors ? row : peak, { day: '', visitors: 0, pageViews: 0 })
+  const funnel = data ? [
+    ['进站访客', data.funnel.visitors], ['看过商品', data.funnel.productVisitors],
+    ['进入结算', data.funnel.checkoutVisitors], ['进入支付页', data.funnel.paymentVisitors], ['付款订单', data.funnel.paidOrders],
+  ] as const : []
 
   return (
     <Card className={`visitor-stats ${className ?? ''}`.trim()}>
@@ -174,48 +189,33 @@ export function VisitorStats({
             <CardTitle>{title}</CardTitle>
           </div>
           <CardDescription>
-            {description || `北京时间 · 最近 ${days} 天访问走势与流量分布`}
+            {description || '前台每打开一个页面记一次浏览；同一浏览器在所选时间内只算一个访客。'}
           </CardDescription>
         </div>
         <div className="visitor-stats-actions">
           {action}
+          <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => onRefresh ? onRefresh() : setRefresh(v => v + 1)}><RefreshCw size={14} />刷新统计</Button>
           <div className="visitor-period" role="group" aria-label="统计时间范围">
-            <Button
-              type="button"
-              variant={days === 7 ? 'secondary' : 'ghost'}
-              size="sm"
-              className="visitor-period-btn"
-              aria-pressed={days === 7}
-              onClick={() => setDays(7)}
-            >
-              7 天
-            </Button>
-            <Button
-              type="button"
-              variant={days === 30 ? 'secondary' : 'ghost'}
-              size="sm"
-              className="visitor-period-btn"
-              aria-pressed={days === 30}
-              onClick={() => setDays(30)}
-            >
-              30 天
-            </Button>
-            <Button
-              type="button"
-              variant={days === 90 ? 'secondary' : 'ghost'}
-              size="sm"
-              className="visitor-period-btn"
-              aria-pressed={days === 90}
-              onClick={() => setDays(90)}
-            >
-              90 天
-            </Button>
+            {(['today', 'yesterday', 7, 30, 90] as const).map(value => <Button key={value} type="button" variant={days === value ? 'secondary' : 'ghost'} size="sm" className="visitor-period-btn" aria-pressed={days === value} onClick={() => { setDays(value); setCustomOpen(false); setRangeError('') }}>{value === 'today' ? '今天' : value === 'yesterday' ? '昨天' : `近 ${value} 天`}</Button>)}
+            <Button type="button" variant={typeof days === 'object' ? 'secondary' : 'ghost'} size="sm" className="visitor-period-btn" aria-pressed={typeof days === 'object'} aria-expanded={customOpen} onClick={() => { if (data) { setStart(data.start); setEnd(data.end) }; setCustomOpen(v => !v) }}>自定义</Button>
           </div>
         </div>
       </CardHeader>
+      {customOpen && <form className="visitor-custom-range" onSubmit={event => {
+        event.preventDefault()
+        try { visitorRange(new URLSearchParams({ start, end })); setDays({ start, end }); setRangeError('') }
+        catch (e) { setRangeError(e instanceof Error ? e.message : '日期范围无效。') }
+      }}>
+        <label>开始日期<input type="date" required max={visitorDay()} value={start} onChange={e => setStart(e.target.value)} /></label>
+        <span aria-hidden="true">—</span>
+        <label>结束日期<input type="date" required max={visitorDay()} value={end} onChange={e => setEnd(e.target.value)} /></label>
+        <Button type="submit" variant="outline" size="sm">应用日期</Button>
+        {rangeError && <p role="alert">{rangeError}</p>}
+      </form>}
       <Feedback error={error} loading={loading} data={data} shape="compact" />
       {data && (
         <CardContent className="visitor-stats-content">
+          <p className="visitor-scope-note">北京时间 {data.start} — {data.end} · 自动排除识别到的爬虫、自动化工具和当前已登录后台的浏览器。访问统计不保存 IP 和账号信息。</p>
           <div className="visitor-kpi-grid">
             <div className="visitor-kpi-card">
               <div className="visitor-kpi-label">
@@ -225,8 +225,13 @@ export function VisitorStats({
               </div>
               <div className="visitor-kpi-val-row">
                 <strong className="visitor-kpi-value">{data.visitors.toLocaleString('zh-CN')}</strong>
-                <span className="visitor-kpi-sub">日均 {avgDailyVisitors} 人</span>
+                <span className="visitor-kpi-sub">今天：访客 {data.today.visitors.toLocaleString('zh-CN')} · 浏览 {data.today.pageViews.toLocaleString('zh-CN')}</span>
               </div>
+            </div>
+            <div className="visitor-kpi-card">
+              <div className="visitor-kpi-label"><Activity size={13} /><span>有效访客</span></div>
+              <strong className="visitor-kpi-value">{data.effectiveVisitors.toLocaleString('zh-CN')}</strong>
+              <span className="visitor-kpi-sub">占访客 {data.effectiveRate}% · 浏览至少 2 次，或看过商品详情</span>
             </div>
             <div className="visitor-kpi-card">
               <div className="visitor-kpi-label">
@@ -241,21 +246,30 @@ export function VisitorStats({
             </div>
             <div className="visitor-kpi-card">
               <div className="visitor-kpi-label">
-                <TrendingUp size={13} className="text-muted-foreground" />
-                <span>单日最高峰值</span>
+                <LogOut size={13} className="text-muted-foreground" />
+                <span>跳出率</span>
               </div>
               <div className="visitor-kpi-val-row">
                 <strong className="visitor-kpi-value">
-                  {peakDay?.visitors ? peakDay.visitors.toLocaleString('zh-CN') : 0}
+                  {data.bounceRate}%
                 </strong>
                 <span className="visitor-kpi-sub">
-                  {peakDay?.visitors ? `${peakDay.day.slice(5)} (${peakDay.pageViews} 浏览)` : '暂无'}
+                  只浏览了 1 次页面的访客占比
                 </span>
               </div>
             </div>
           </div>
 
+          <section className="visitor-funnel" aria-label="购买漏斗">
+            <div className="visitor-funnel-heading"><div><h3>购买漏斗</h3><p>各行为按所选时段独立统计并按访客去重；付款订单为同期真实支付确认的订单数。</p></div><strong>访客转化率 {data.conversionRate}%</strong></div>
+            <ol>{funnel.map(([label, count], index) => {
+              const previous = index ? funnel[index - 1][1] : 0
+              return <li key={label}><span>{label}</span><div className="visitor-funnel-track" aria-hidden="true"><div style={{ width: `${Math.min(100, visitorPercent(count, data.visitors))}%` }} /></div><div className="visitor-funnel-value"><strong>{count.toLocaleString('zh-CN')}</strong>{index > 0 && <small>上一步的 {previous > 0 ? `${visitorPercent(count, previous)}%` : '—'}</small>}</div></li>
+            })}</ol>
+          </section>
+
           <div className="visitor-chart-wrapper">
+            <div className="visitor-trend-heading"><h3>每日访问趋势</h3><span>日均 {avgDailyVisitors} 人 · 单日最高 {peakDay?.visitors ?? 0} 人{peakDay?.day ? `（${peakDay.day}）` : ''}</span></div>
             {data.pageViews ? (
               <TrendChart trend={data.trend} />
             ) : (
@@ -269,7 +283,7 @@ export function VisitorStats({
             )}
           </div>
           <p className="visitor-footnote">
-            图表按北京时间逐日去重；顶部独立访客在整个所选时段内去重，浏览多个页面计入浏览量。
+            图表逐日去重，顶部访客在整个所选时段内去重。商品、结算和支付行为从功能启用后开始采集，历史浏览量保留。漏斗各步可能跨期，付款订单可能包含回访或同一访客的多笔订单，比例可能超过 100%；各步比例零分母显示「—」。
           </p>
         </CardContent>
       )}

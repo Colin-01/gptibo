@@ -38,6 +38,7 @@ func testD1ImportRecovery(t *testing.T, reason, stage string) {
  db.exec("INSERT INTO xgift_recovery_attempts(id,order_id,attempt,merchant_order_no,previous_merchant_order_no,previous_supplier_order,previous_failure_code,expected_order_version,actor,note,created_at) VALUES('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb','YMX-HISTORY',1,'YMX-HISTORY:retry:1','YMX-HISTORY','ord_original','card_wallet_insufficient',0,'fixture','recovery',1700000000010)");
  db.exec("INSERT INTO telegram_partner_applications(id,user_id,group_id,partner_id,wechat,qq,email,created_at,next_attempt_at,mail_attempts,lock_token,lock_until) VALUES('tg-fixture',77,-100123,'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa','wechat_fixture','123456','agent@example.test',1700000000000,1700000000000,1,'old-lock',9999999999999)");
  db.exec("INSERT INTO admin_sessions(token_hash,credential_version,expires_at) VALUES('must-not-import','old-secret-hash',9999999999999)");
+ db.exec("INSERT INTO visitor_days(day,shop_id,visitor_hash,page_views,product_view,checkout_view,payment_view) VALUES('2026-10-01','platform','anonymous-fixture',3,1,1,1)");
  db.exec("INSERT INTO admin_audit(id,action,target_id,note,created_at) VALUES('legacy:reconcile:order:2026-10-07','legacy-check','YMX-HISTORY','fixture',1700000000000)");
  db.exec("ALTER TABLE xgift_recovery_attempts ADD COLUMN previous_stage TEXT");
  db.exec("DROP TRIGGER xgift_recovery_no_update; UPDATE xgift_recovery_attempts SET previous_stage='supplier_failed'");db.close();
@@ -95,6 +96,10 @@ func testD1ImportRecovery(t *testing.T, reason, stage string) {
 	}
 	if _, e = importer.Reconcile(ctx, owner, report.SHA256); e != nil {
 		t.Fatal(e)
+	}
+	var views, product, checkout, payment int
+	if e = owner.DB.QueryRow(ctx, `SELECT page_views,product_view,checkout_view,payment_view FROM visitor_days WHERE visitor_hash='anonymous-fixture'`).Scan(&views, &product, &checkout, &payment); e != nil || views != 3 || product != 1 || checkout != 1 || payment != 1 {
+		t.Fatal("import lost visitor analytics", views, product, checkout, payment, e)
 	}
 	if _, e = importer.Run(ctx, owner, snapshot, report.SHA256, true); e == nil {
 		t.Fatal("nonempty target overwritten")

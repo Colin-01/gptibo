@@ -13,6 +13,7 @@ import { OrderSupportButton } from './order-support-button'
 import { OrderSupportGuideContext } from '@/lib/order-support-guide'
 import { ORDER_PLANS, orderLabel, type PlanId } from '@/lib/demo-orders'
 import '@/styles/purchase-flow.css'
+import { trackVisitor } from '@/lib/visitor-tracking'
 
 // Keep the popup and its focus scope mounted while only the step content changes.
 function FlowStage({ stage, children }: { stage: string; children: ReactNode }) {
@@ -61,6 +62,9 @@ export function PurchaseFlow({ couponAvailable = false, shopSlug, notice, onClos
   const titleRef = useRef<HTMLHeadingElement>(null)
   const popupRef = useRef<HTMLDivElement>(null)
   const showingNotice = Boolean(notice)
+  useEffect(() => {
+    if (open && emailMode) trackVisitor(location.pathname, 'checkout')
+  }, [open, emailMode])
   const previousNotice = useRef(showingNotice)
   useLayoutEffect(() => {
     if (previousNotice.current && !showingNotice && open) {

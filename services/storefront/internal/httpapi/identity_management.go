@@ -493,7 +493,7 @@ func register(r *gin.Engine, s *store.Store, opts Options) {
 	}
 	registerRefunds(group, admin, refundService, token)
 	registerPaymentTests(admin, paymentService, a, refundService, opts.PaymentTesting, token)
-	registerAnalytics(group, admin, partner, m, a)
+	registerAnalytics(group, admin, partner, m, a, token)
 	orderService := orders.Service{Store: s, Auth: a, ProtectCreation: opts.OrderProtection, Testing: opts.OrderTesting, ReadOnly: opts.Rehearsal, PaymentReady: paymentService.Provider != nil}
 	group.GET("/orders/verification", func(c *gin.Context) {
 		if opts.Turnstile == nil || (c.Query("purpose") == "auth" && !opts.AuthTurnstile) {

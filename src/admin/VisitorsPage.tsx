@@ -6,6 +6,7 @@ import { useResource } from '@/lib/use-resource'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { partnerStorefrontPath } from '../../shared/partner-link.ts'
+import { visitorQuery } from '../../shared/visitor-analytics.ts'
 
 type AdminSummary = VisitorSummary & {
   platform: { visitors: number; pageViews: number }
@@ -15,13 +16,16 @@ type AdminSummary = VisitorSummary & {
 export default function AdminVisitorsPage({ revision }: { revision: number }) {
   const [selected, setSelected] = useState<{ id: string; name: string }>()
   const [days, setDays] = useState<VisitorPeriod>(7)
-  const { data, error, loading } = useResource<AdminSummary>(`/api/admin/visitors?days=${days}`, revision)
+  const [refresh, setRefresh] = useState(0)
+  const refreshAll = () => setRefresh(v => v + 1)
+  const { data, error, loading } = useResource<AdminSummary>(`/api/admin/visitors?${visitorQuery(days)}`, revision + refresh)
 
   return (
     <>
       <VisitorStats
         endpoint="/api/admin/visitors"
-        revision={revision}
+        revision={revision + refresh}
+        onRefresh={refreshAll}
         title="全站访问趋势"
         description="全平台直营与所有代理商店的综合访问与页面浏览走势"
         selectedDays={days}
@@ -31,7 +35,7 @@ export default function AdminVisitorsPage({ revision }: { revision: number }) {
         <div className="admin-panel-title">
           <div>
             <h2>各商店渠道访客</h2>
-            <span>最近 {days} 天 · 独立访客按商店分别去重统计</span>
+            <span>{data ? `${data.start} — ${data.end}` : '所选时间段'} · 独立访客按商店分别去重统计</span>
           </div>
           {data && <span>共 {data.partners.length + 1} 个访问来源</span>}
         </div>
@@ -100,7 +104,8 @@ export default function AdminVisitorsPage({ revision }: { revision: number }) {
             </DialogHeader>
             <VisitorStats
               endpoint={`/api/admin/partners/${selected.id}/visitors`}
-              revision={revision}
+              revision={revision + refresh}
+              onRefresh={refreshAll}
               title={`${selected.name} 访客走势`}
               description="专属推广链接独立访客与浏览量趋势"
               selectedDays={days}

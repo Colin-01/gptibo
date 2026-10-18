@@ -1,6 +1,7 @@
 import { isXGiftPlan } from '../../shared/xgift-products'
 import { AsyncButton, PaymentConfirmed, RequestNotice } from './payment-feedback'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { trackVisitor } from '@/lib/visitor-tracking'
 import { ArrowRight, Check, ChevronLeft, CreditCard, FileCheck2, Info, LoaderCircle, LockKeyhole, RotateCcw, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { SuccessMark } from './brand'
@@ -16,6 +17,10 @@ export type CheckoutProps = { testingEnabled?: boolean; order: ServerOrder | und
 export function Checkout({ order, open, onOpenChange, onAction, onOrders, busy, pendingAction, error, onUpdated, testingEnabled, onOrderUpdated, refreshTarget, refreshDisabled }: CheckoutProps) {
   const [credential, setCredential] = useState('')
   const [outcome, setOutcome] = useState<'success' | 'failed'>('success')
+  const paymentVisible = open && order?.mode === 'live' && !order.isTest && order.status === 'pending' && !order.redemptionBlocked && !order.refundHold
+  useEffect(() => {
+    if (paymentVisible) trackVisitor(location.pathname, 'payment')
+  }, [paymentVisible, order?.id])
   if (order?.mode === 'live' && (order.manualFulfillment || isXGiftPlan(order.plan))) return <ManualCheckout key={order.id} order={order} open={open} onUpdated={onUpdated} onOrderUpdated={onOrderUpdated} onOrders={onOrders} onOpenChange={onOpenChange} onAction={onAction} refreshTarget={refreshTarget} refreshDisabled={refreshDisabled} />
   if (order?.mode === 'live' && order.fulfillment) return <LiveCheckout key={order.id} order={order} open={open} onUpdated={onUpdated} onOrderUpdated={onOrderUpdated} onOrders={onOrders} error={error} refreshTarget={refreshTarget} refreshDisabled={refreshDisabled} />
   if (order && (order.mode !== 'demo' || !testingEnabled)) return <OrderRecord order={order} open={open} onOpenChange={onOpenChange} onAction={onAction} onOrders={onOrders} error={error} />
